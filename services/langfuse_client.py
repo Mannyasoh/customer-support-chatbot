@@ -142,5 +142,4 @@ class LangfuseClient:
             self.client.flush()
 
 
-# Global instance
 langfuse_client = LangfuseClient()
