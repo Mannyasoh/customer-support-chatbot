@@ -2,8 +2,8 @@
 
 A modern, production-ready customer support chatbot built with FastAPI, OpenAI GPT-4, and intelligent intent classification. Features real-time streaming responses, MCP (Model Context Protocol) integration, and comprehensive observability.
 
-[![CI/CD Pipeline](https://github.com/yourusername/customer-support-chatbot/workflows/CI/CD%20Pipeline/badge.svg)](https://github.com/yourusername/customer-support-chatbot/actions)
-[![codecov](https://codecov.io/gh/yourusername/customer-support-chatbot/branch/main/graph/badge.svg)](https://codecov.io/gh/yourusername/customer-support-chatbot)
+[![CI/CD Pipeline](https://github.com/Mannyasoh/customer-support-chatbot/workflows/CI/CD%20Pipeline/badge.svg)](https://github.com/Mannyasoh/customer-support-chatbot/actions)
+[![codecov](https://codecov.io/gh/yourMannyasoh/customer-support-chatbot/branch/main/graph/badge.svg)](https://codecov.io/gh/yourusername/customer-support-chatbot)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -349,9 +349,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🤝 Support
 
-- **Documentation**: [Wiki](https://github.com/yourusername/customer-support-chatbot/wiki)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/customer-support-chatbot/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/customer-support-chatbot/discussions)
+- **Documentation**: [Wiki](https://github.com/Mannyasoh/customer-support-chatbot/wiki)
+- **Issues**: [GitHub Issues](https://github.com/Mannyasoh/customer-support-chatbot/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Mannyasoh/customer-support-chatbot/discussions)
 
 ## 🙏 Acknowledgments
 
@@ -362,4 +362,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Built with ❤️ for the AI Engineering community**
+**Built with ❤️ By Manny Asoh**
