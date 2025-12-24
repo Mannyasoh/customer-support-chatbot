@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
-from main_refactored import app
+from main import app
 
 
 class TestMainApp:
@@ -73,9 +73,9 @@ class TestMainApp:
         with pytest.raises(FileNotFoundError):
             client.get("/test")
 
-    @patch("main_refactored.intent_classifier.classify_intent")
-    @patch("main_refactored.mcp_client.route_intent_to_mcp")
-    @patch("main_refactored.mcp_client.execute_mcp_call")
+    @patch("main.intent_classifier.classify_intent")
+    @patch("main.mcp_client.route_intent_to_mcp")
+    @patch("main.mcp_client.execute_mcp_call")
     def test_chat_endpoint_integration(
         self, mock_execute, mock_route, mock_classify, client
     ):
