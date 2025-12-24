@@ -72,7 +72,7 @@ A modern, production-ready customer support chatbot built with FastAPI, OpenAI G
 
 ```
 customer-support-chatbot/
-├── 📄 main_refactored.py          # Main FastAPI application
+├── 📄 main.py          # Main FastAPI application
 ├── 📄 config.py                   # Configuration management
 ├── 📁 services/                   # Business logic services
 │   ├── 📄 __init__.py
@@ -129,7 +129,7 @@ LANGFUSE_SECRET_KEY=your_langfuse_secret_key
 ### 4. **Run the Application**
 ```bash
 # Development mode
-python main_refactored.py
+python main.py
 
 # Production mode with Docker
 docker build -t chatbot .
