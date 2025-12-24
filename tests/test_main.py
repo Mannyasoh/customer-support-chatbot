@@ -1,5 +1,5 @@
 """Integration tests for main application"""
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -39,7 +39,7 @@ class TestMainApp:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["success"] == True
+        assert data["success"] is True
         assert data["customer"] == "donaldgarcia@example.net"
 
     def test_auth_endpoint_invalid_credentials(self, client):
@@ -49,7 +49,7 @@ class TestMainApp:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["success"] == False
+        assert data["success"] is False
         assert data["customer"] is None
 
     def test_auth_endpoint_missing_data(self, client):
@@ -57,7 +57,7 @@ class TestMainApp:
         response = client.post("/auth", json={})
         assert response.status_code == 200
         data = response.json()
-        assert data["success"] == False
+        assert data["success"] is False
 
     def test_root_endpoint_returns_html(self, client):
         """Test root endpoint returns HTML chat interface"""

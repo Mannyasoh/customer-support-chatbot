@@ -1,40 +1,29 @@
-"""MCP (Model Context Protocol) client service"""
 import json
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
+from loguru import logger
 
 from config import CUSTOMERS, Config
 
 
 class MCPClient:
-    """Client for interacting with MCP server"""
-
     def __init__(self):
         self.server_url = Config.MCP_SERVER_URL
-        self.timeout = Config.MCP_TIMEOUT
+        self.timeout = httpx.Timeout(Config.MCP_TIMEOUT)
         self.headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
+        self.limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
 
     async def route_intent_to_mcp(
         self, intent: str, entities: List[str], message: str, customer: str
-    ) -> Tuple[Optional[Dict], str]:
-        """
-        Route intent to appropriate MCP tool
-
-        Args:
-            intent: Classified intent
-            entities: Extracted entities
-            message: Original message
-            customer: Customer email
-
-        Returns:
-            Tuple of (tool_message, response_text)
-        """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+    ) -> Tuple[Optional[Dict[str, Any]], str]:
+        async with httpx.AsyncClient(
+            timeout=self.timeout, limits=self.limits, headers=self.headers
+        ) as client:
             if intent == "SEARCH_PRODUCTS":
                 return await self._handle_search_products(entities, message), ""
 
@@ -73,7 +62,6 @@ class MCPClient:
     async def _handle_order_status(
         self, client: httpx.AsyncClient, customer: str
     ) -> Tuple[Optional[Dict], str]:
-        """Handle order status requests"""
         verify_msg = {
             "jsonrpc": "2.0",
             "method": "tools/call",
@@ -88,17 +76,17 @@ class MCPClient:
             verify_resp = await client.post(
                 self.server_url, json=verify_msg, headers=self.headers, timeout=10.0
             )
-            print(f"Customer verify response: {verify_resp.status_code}")
+            logger.debug(f"Customer verify response: {verify_resp.status_code}")
 
             if verify_resp.status_code == 200:
                 verify_result = verify_resp.json()
-                print(f"Verify result structure: {verify_result}")
+                logger.debug(f"Verify result structure: {verify_result}")
 
                 customer_info = self._extract_customer_info(verify_result)
                 if customer_info:
                     customer_id = self._extract_customer_id(customer_info)
                     if customer_id:
-                        print(f"Found customer ID: {customer_id}")
+                        logger.debug(f"Found customer ID: {customer_id}")
                         order_msg = {
                             "jsonrpc": "2.0",
                             "method": "tools/call",
@@ -123,7 +111,7 @@ class MCPClient:
                 )
 
         except Exception as verify_error:
-            print(f"Customer verification error: {verify_error}")
+            logger.error(f"Customer verification error: {verify_error}")
             return (
                 None,
                 "Unable to verify customer at this time. Please try again later.",
@@ -132,7 +120,6 @@ class MCPClient:
     async def _handle_account_info(
         self, client: httpx.AsyncClient, customer: str
     ) -> Tuple[Optional[Dict], str]:
-        """Handle account information requests"""
         verify_msg = {
             "jsonrpc": "2.0",
             "method": "tools/call",
@@ -147,11 +134,11 @@ class MCPClient:
             verify_resp = await client.post(
                 self.server_url, json=verify_msg, headers=self.headers, timeout=10.0
             )
-            print(f"Account info response: {verify_resp.status_code}")
+            logger.debug(f"Account info response: {verify_resp.status_code}")
 
             if verify_resp.status_code == 200:
                 verify_result = verify_resp.json()
-                print(f"Account info result: {verify_result}")
+                logger.debug(f"Account info result: {verify_result}")
 
                 customer_info = self._extract_customer_info(verify_result)
                 if customer_info:
@@ -329,9 +316,9 @@ class MCPClient:
         result = verify_result["result"]
 
         if "structuredContent" in result and "result" in result["structuredContent"]:
-            return result["structuredContent"]["result"]
+            return str(result["structuredContent"]["result"])
         elif "content" in result and result["content"]:
-            return result["content"][0]["text"]
+            return str(result["content"][0]["text"])
         else:
             return str(result)
 

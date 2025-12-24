@@ -18,7 +18,7 @@ class TestConfig:
         assert Config.CHAR_STREAMING_THRESHOLD == 200
         assert Config.WORD_STREAMING_THRESHOLD == 1000
         assert Config.MAX_PRODUCTS_DISPLAY == 8
-        assert Config.PRODUCT_TRUNCATION_ENABLED == True
+        assert Config.PRODUCT_TRUNCATION_ENABLED is True
 
     def test_config_validation_missing_api_key(self):
         """Test validation fails when API key is missing"""
@@ -40,7 +40,7 @@ class TestConfig:
         """Test validation passes when all required vars are present"""
         with patch.object(Config, "OPENAI_API_KEY", "test-key"):
             with patch.object(Config, "MCP_SERVER_URL", "https://example.com"):
-                assert Config.validate() == True
+                assert Config.validate() is True
 
     @patch.dict(os.environ, {"INTENT_CONFIDENCE_THRESHOLD": "0.8"})
     def test_config_env_override(self):

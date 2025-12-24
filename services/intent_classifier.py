@@ -1,52 +1,27 @@
-"""Intent classification service using OpenAI"""
 import json
-from typing import Dict, List
+from typing import Any, Dict
 
+from langfuse import observe
+from loguru import logger
 from openai import AsyncOpenAI
 
 from config import INTENT_CATEGORIES, Config
 
-from .langfuse_client import langfuse_client
-
 
 class IntentClassifier:
-    """LLM-based intent classification service"""
-
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=Config.OPENAI_API_KEY)
+        self.client = AsyncOpenAI(
+            api_key=Config.OPENAI_API_KEY,
+            timeout=30.0,
+            max_retries=3,
+        )
         self.model = Config.OPENAI_MODEL
 
-    async def classify_intent(self, message: str, customer: str, trace=None) -> Dict:
-        """
-        Classify customer intent using LLM
-
-        Args:
-            message: Customer message
-            customer: Customer email
-            trace: Langfuse trace for observability
-
-        Returns:
-            Dict with intent, confidence, entities, and reasoning
-        """
+    @observe(name="intent-classification", as_type="generation")
+    async def classify_intent(self, message: str, customer: str) -> Dict[str, Any]:
         try:
             system_prompt = self._build_system_prompt()
             user_prompt = f"Customer: {customer}\nMessage: {message}"
-
-            # Log to Langfuse
-            generation = None
-            if trace:
-                generation = langfuse_client.log_generation(
-                    trace=trace,
-                    name="intent_classification",
-                    input_data={
-                        "system_prompt": system_prompt,
-                        "user_message": message,
-                        "customer": customer,
-                    },
-                    output_data={},
-                    model=self.model,
-                    metadata={"service": "intent_classifier"},
-                )
 
             response = await self.client.chat.completions.create(
                 model=self.model,
@@ -58,62 +33,20 @@ class IntentClassifier:
                 temperature=Config.INTENT_TEMPERATURE,
             )
 
-            result = json.loads(response.choices[0].message.content)
-            print(f"Intent classification: {result}")
-
-            # Update Langfuse generation
-            if generation:
-                langfuse_client.log_generation(
-                    trace=trace,
-                    name="intent_classification",
-                    input_data={
-                        "system_prompt": system_prompt,
-                        "user_message": message,
-                        "customer": customer,
-                    },
-                    output_data=result,
-                    model=self.model,
-                    tokens_used={
-                        "input": response.usage.prompt_tokens,
-                        "output": response.usage.completion_tokens,
-                        "total": response.usage.total_tokens,
-                    }
-                    if response.usage
-                    else None,
-                    metadata={"service": "intent_classifier"},
-                )
-
-                # Score the classification confidence
-                langfuse_client.score_generation(
-                    generation=generation,
-                    score_name="confidence",
-                    score_value=result.get("confidence", 0.0),
-                    comment=f"Intent: {result.get('intent', 'unknown')}",
-                )
-
+            result: Dict[str, Any] = json.loads(response.choices[0].message.content)
+            logger.debug(f"Intent classification: {result}")
             return result
 
         except Exception as e:
-            print(f"Intent classification error: {e}")
-            error_result = {
+            logger.error(f"Intent classification error: {e}")
+            return {
                 "intent": "OTHER",
                 "confidence": 0.5,
                 "entities": [],
                 "reasoning": "Classification failed",
             }
 
-            # Log error to Langfuse
-            if trace:
-                langfuse_client.log_event(
-                    trace=trace,
-                    name="intent_classification_error",
-                    metadata={"error": str(e), "service": "intent_classifier"},
-                )
-
-            return error_result
-
     def _build_system_prompt(self) -> str:
-        """Build the system prompt for intent classification"""
         categories_text = "\n".join(
             [
                 f"- {cat}: {self._get_category_description(cat)}"
@@ -132,7 +65,6 @@ Return ONLY valid JSON in this exact format:
 {{"intent": "CATEGORY", "confidence": 0.95, "entities": ["key", "terms"], "reasoning": "brief explanation"}}"""
 
     def _get_category_description(self, category: str) -> str:
-        """Get description for each intent category"""
         descriptions = {
             "SEARCH_PRODUCTS": "Looking for products, browsing, specifications",
             "ORDER_STATUS": "Checking order status, delivery, tracking",

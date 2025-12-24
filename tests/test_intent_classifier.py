@@ -35,7 +35,9 @@ class TestIntentClassifier:
     @pytest.mark.asyncio
     async def test_classify_intent_success(self, classifier, mock_openai_response):
         """Test successful intent classification"""
-        with patch.object(classifier.client.chat.completions, "create") as mock_create:
+        with patch.object(
+            classifier.client.chat.completions, "create", new_callable=AsyncMock
+        ) as mock_create:
             mock_create.return_value = mock_openai_response
             result = await classifier.classify_intent(
                 "I want a gaming laptop", "test@example.com"
@@ -52,6 +54,7 @@ class TestIntentClassifier:
         with patch.object(
             classifier.client.chat.completions,
             "create",
+            new_callable=AsyncMock,
             side_effect=Exception("API Error"),
         ):
             result = await classifier.classify_intent(
@@ -72,7 +75,10 @@ class TestIntentClassifier:
         mock_response.choices = [mock_choice]
 
         with patch.object(
-            classifier.client.chat.completions, "create", return_value=mock_response
+            classifier.client.chat.completions,
+            "create",
+            new_callable=AsyncMock,
+            return_value=mock_response,
         ):
             result = await classifier.classify_intent(
                 "test message", "test@example.com"

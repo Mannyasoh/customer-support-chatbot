@@ -1,12 +1,11 @@
 import asyncio
 import json
-import os
+from typing import Any, Dict
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
 from openai import AsyncOpenAI
 from sse_starlette.sse import EventSourceResponse
 
@@ -76,7 +75,7 @@ Return ONLY valid JSON in this exact format:
             temperature=0.1,
         )
 
-        result = json.loads(response.choices[0].message.content)
+        result: Dict[str, Any] = json.loads(response.choices[0].message.content)
         print(f"Intent classification: {result}")
         return result
     except Exception as e:

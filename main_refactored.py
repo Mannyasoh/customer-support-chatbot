@@ -1,24 +1,33 @@
-"""Refactored Customer Support Chatbot with modular architecture"""
-import uvicorn
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
-from sse_starlette.sse import EventSourceResponse
+from contextlib import asynccontextmanager
 
-# Import our modular services
+import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, StreamingResponse
+from langfuse import observe
+from loguru import logger
+
 from config import CUSTOMERS, Config
 from services.intent_classifier import IntentClassifier
-from services.langfuse_client import langfuse_client
 from services.mcp_client import MCPClient
 from services.streaming import StreamingService, get_simple_response
 
-# Validate configuration
-Config.validate()
 
-# Initialize FastAPI app
-app = FastAPI(title=Config.APP_TITLE)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Starting application...")
+    Config.validate()
+    yield
+    # Shutdown
+    logger.info("Shutting down application...")
 
-# Add CORS middleware
+
+app = FastAPI(
+    title=Config.APP_TITLE,
+    version="2.0.0",
+    lifespan=lifespan,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -27,7 +36,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize services
 intent_classifier = IntentClassifier()
 mcp_client = MCPClient()
 streaming_service = StreamingService()
@@ -35,168 +43,68 @@ streaming_service = StreamingService()
 
 @app.post("/auth")
 async def authenticate(request: Request):
-    """Authenticate customer with email and PIN"""
     data = await request.json()
     email, pin = data.get("email"), data.get("pin")
-    is_valid = CUSTOMERS.get(email) == pin
+    is_valid = bool(email and pin and CUSTOMERS.get(email) == pin)
     return {"success": is_valid, "customer": email if is_valid else None}
 
 
 @app.get("/chat/{customer}")
+@observe(name="chat-interaction", capture_input=False, capture_output=False)
 async def chat_stream(customer: str, message: str, request: Request):
-    """Main chat endpoint with intelligent routing and streaming"""
-
     async def event_generator():
         if await request.is_disconnected():
             return
 
-        # Create Langfuse trace for observability
-        trace = langfuse_client.create_trace(
-            name="chat_interaction",
-            user_id=customer,
-            session_id=f"{customer}_{hash(message) % 10000}",
-            metadata={"message": message, "customer": customer, "endpoint": "chat"},
-        )
+        response = "I can help with orders, products, warranties, and technical issues. What do you need?"
+        intent = "OTHER"
+        confidence = 0.5
+        entities = []
 
         try:
-            # Step 1: Classify intent using LLM
-            intent_result = await intent_classifier.classify_intent(
-                message, customer, trace
-            )
+            intent_result = await intent_classifier.classify_intent(message, customer)
             intent = intent_result.get("intent", "OTHER")
             entities = intent_result.get("entities", [])
             confidence = intent_result.get("confidence", 0.5)
 
-            print(f"Classified intent: {intent} (confidence: {confidence})")
-
-            # Log intent classification result
-            if trace:
-                langfuse_client.log_event(
-                    trace=trace,
-                    name="intent_classified",
-                    metadata={
-                        "intent": intent,
-                        "confidence": confidence,
-                        "entities": entities,
-                    },
-                )
-
-            # Step 2: Start with simple response as fallback
+            logger.info(f"Intent: {intent} (confidence: {confidence})")
             response = get_simple_response(message, customer)
-
-            # Step 3: Route to MCP server if confidence is high enough
+            mcp_intents = [
+                "SEARCH_PRODUCTS",
+                "ORDER_STATUS",
+                "PLACE_ORDER",
+                "WARRANTY_SUPPORT",
+                "ACCOUNT_INFO",
+            ]
             if (
-                intent
-                in [
-                    "SEARCH_PRODUCTS",
-                    "ORDER_STATUS",
-                    "PLACE_ORDER",
-                    "WARRANTY_SUPPORT",
-                    "ACCOUNT_INFO",
-                ]
+                intent in mcp_intents
                 and confidence > Config.INTENT_CONFIDENCE_THRESHOLD
             ):
-                print(f"MCP trigger detected in: {message}")
-
-                # Log MCP routing span
-                mcp_span = langfuse_client.log_span(
-                    trace=trace,
-                    name="mcp_routing",
-                    input_data={
-                        "intent": intent,
-                        "entities": entities,
-                        "message": message,
-                        "customer": customer,
-                    },
-                    metadata={"service": "mcp_client"},
-                )
+                logger.info(f"MCP routing for intent: {intent}")
 
                 try:
-                    # Route intent to appropriate MCP tool
                     tool_msg, direct_response = await mcp_client.route_intent_to_mcp(
                         intent, entities, message, customer
                     )
 
                     if direct_response:
-                        # Use direct response (e.g., from account info)
                         response = direct_response
-                        if mcp_span:
-                            langfuse_client.log_span(
-                                trace=trace,
-                                name="mcp_routing",
-                                input_data={
-                                    "intent": intent,
-                                    "entities": entities,
-                                    "message": message,
-                                    "customer": customer,
-                                },
-                                output_data={
-                                    "response": direct_response,
-                                    "type": "direct",
-                                },
-                                metadata={"service": "mcp_client"},
-                            )
                     elif tool_msg:
-                        # Execute MCP tool call
                         mcp_result = await mcp_client.execute_mcp_call(tool_msg)
-
-                        if "content" in mcp_result:
-                            response = mcp_result["content"]
-                            if mcp_span:
-                                langfuse_client.log_span(
-                                    trace=trace,
-                                    name="mcp_routing",
-                                    input_data={
-                                        "intent": intent,
-                                        "entities": entities,
-                                        "message": message,
-                                        "customer": customer,
-                                        "tool_msg": tool_msg,
-                                    },
-                                    output_data={
-                                        "response": response,
-                                        "type": "mcp_tool",
-                                    },
-                                    metadata={
-                                        "service": "mcp_client",
-                                        "tool": tool_msg.get("params", {}).get("name"),
-                                    },
-                                )
-                        elif "error" in mcp_result:
-                            response = mcp_result["error"]
-                            if trace:
-                                langfuse_client.log_event(
-                                    trace=trace,
-                                    name="mcp_error",
-                                    metadata={
-                                        "error": mcp_result["error"],
-                                        "tool_msg": tool_msg,
-                                    },
-                                )
-
-                except Exception as e:
-                    print(f"Unexpected error in MCP routing: {e}")
-                    response = "An unexpected error occurred. Please try again or contact support if this continues."
-                    if trace:
-                        langfuse_client.log_event(
-                            trace=trace,
-                            name="mcp_routing_error",
-                            metadata={"error": str(e)},
+                        response = mcp_result.get("content") or mcp_result.get(
+                            "error", response
                         )
+                except Exception as e:
+                    logger.error(f"MCP routing error: {e}")
+                    response = "An unexpected error occurred. Please try again or contact support if this continues."
 
-            # Step 4: Stream response with smart pacing
             async for chunk in streaming_service.stream_response(
                 response, request, intent
             ):
                 yield chunk
 
         except Exception as e:
-            print(f"Chat processing error: {e}")
-            if trace:
-                langfuse_client.log_event(
-                    trace=trace, name="chat_error", metadata={"error": str(e)}
-                )
-            # Send error response
+            logger.error(f"Chat error: {e}")
             error_response = (
                 "I'm experiencing technical difficulties. Please try again."
             )
@@ -205,40 +113,30 @@ async def chat_stream(customer: str, message: str, request: Request):
             ):
                 yield chunk
 
-        finally:
-            # Update trace with final response
-            if trace:
-                langfuse_client.update_trace(
-                    trace=trace,
-                    output={"response": response, "intent": intent},
-                    metadata={
-                        "final_intent": intent,
-                        "confidence": confidence,
-                        "response_length": len(response),
-                    },
-                )
-                langfuse_client.flush()
-
-    # Anti-buffering headers for real-time streaming
     headers = {
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no",
     }
 
-    return EventSourceResponse(event_generator(), headers=headers)
+    async def generate():
+        async for chunk in event_generator():
+            yield f"data: {chunk['data']}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        generate(), media_type="text/event-stream", headers=headers
+    )
 
 
 @app.get("/test")
 async def test_page():
-    """Test page for debugging"""
     with open("test.html") as f:
         return HTMLResponse(f.read())
 
 
 @app.get("/", response_class=HTMLResponse)
 async def get_chat_ui():
-    """Serve the main chat interface"""
     return """<!DOCTYPE html>
 <html><head><title>Customer Support Chat</title><style>
 body{font-family:Arial;max-width:600px;margin:50px auto;padding:20px}
@@ -298,13 +196,11 @@ lastBot.textContent=text;messages.scrollTop=messages.scrollHeight;}
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
     return {"status": "healthy", "version": "2.0.0"}
 
 
 @app.get("/config")
 async def get_config():
-    """Get public configuration (for debugging)"""
     return {
         "app_title": Config.APP_TITLE,
         "intent_threshold": Config.INTENT_CONFIDENCE_THRESHOLD,
